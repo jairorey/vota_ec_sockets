@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'package:pie_chart/pie_chart.dart';
+import 'package:provider/provider.dart';
+import 'package:vota_ec/providers/socket.dart';
 import 'package:vota_ec/models/candidato.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -10,17 +13,32 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<Candidato> cand = [
-    Candidato(id: '1', name: 'Andrés Lelo Arauz', votes: 32),
-    Candidato(id: '2', name: 'Lucio Pistolita Gutierrez', votes: 6),
-    Candidato(id: '3', name: 'Xavier TikToker Hervas', votes: 16),
-    Candidato(id: '4', name: 'Pedro Mushpa Freire', votes: 7),
-    Candidato(id: '5', name: 'Yaku Liaste Perez', votes: 19),
-    Candidato(id: '6', name: 'Guillermo BanqueroQ Lasso', votes: 19),
-    Candidato(id: '7', name: 'JuanFer KanyeWest Velasco', votes: 1),
+  List<Candidato> cands = [
+    // Candidato(id: '1', name: 'Andrés Lelo Arauz', votes: 32),
+    // Candidato(id: '2', name: 'Lucio Pistolita Gutierrez', votes: 6),
+    // Candidato(id: '3', name: 'Xavier TikToker Hervas', votes: 16),
+    // Candidato(id: '4', name: 'Pedro Mushpa Freire', votes: 7),
+    // Candidato(id: '5', name: 'Yaku Liaste Perez', votes: 19),
+    // Candidato(id: '6', name: 'Guillermo BanqueroQ Lasso', votes: 19),
+    // Candidato(id: '7', name: 'JuanFer KanyeWest Velasco', votes: 1),
   ];
+
+  @override
+  void initState() {
+    final socketService = Provider.of<Socket>(context, listen: false);
+    socketService.socket.on('active-cands', (payload) {
+      this.cands =
+          (payload as List).map((cand) => Candidato.fromMap(cand)).toList();
+      setState(() {});
+    });
+
+    super.initState();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final socketService = Provider.of<Socket>(context);
+    //print(cands.length);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -28,10 +46,36 @@ class _HomePageState extends State<HomePage> {
           style: TextStyle(color: Colors.black87),
         ),
         backgroundColor: Colors.white,
+        actions: [
+          Container(
+            margin: EdgeInsets.only(right: 10.0),
+            child: (socketService.serverStatus == ServerStatus.Online)
+                ? Icon(
+                    Icons.check_circle,
+                    color: Colors.blue,
+                  )
+                : Icon(
+                    Icons.error,
+                    color: Colors.red,
+                  ),
+          )
+        ],
       ),
-      body: ListView.builder(
-        itemCount: cand.length,
-        itemBuilder: (context, int i) => _candTile(cand[i]),
+      body: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.only(top: 20),
+            width: double.infinity,
+            height: 200,
+            child: _showGraph(),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: cands.length,
+              itemBuilder: (context, int i) => _candTile(cands[i]),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         child: Icon(Icons.add),
@@ -41,9 +85,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _candTile(Candidato cand) {
+    final socketService = Provider.of<Socket>(context, listen: false);
+
     return Dismissible(
       key: Key(cand.id),
       direction: DismissDirection.startToEnd,
+      onDismissed: (_) =>
+          socketService.socket.emit('delete-cand', {'id': cand.id}),
       background: Container(
         padding: EdgeInsets.only(left: 8.0),
         color: Colors.red,
@@ -67,7 +115,7 @@ class _HomePageState extends State<HomePage> {
           style: TextStyle(fontSize: 20),
         ),
         onTap: () {
-          print(cand.name);
+          socketService.socket.emit('vote-cand', {'id': cand.id});
         },
       ),
     );
@@ -121,15 +169,32 @@ class _HomePageState extends State<HomePage> {
   }
 
   void addCandToList(String name) {
-    print(name);
+    final socketService = Provider.of<Socket>(context, listen: false);
     if (name.length > 1) {
-      this.cand.add(new Candidato(
+      // emitir:
+
+      socketService.socket.emit('add-cand', {'name': name});
+
+      /*
+      // CODIGO INICIAL SIN SOCKETS
+      this.cands.add(new Candidato(
             id: DateTime.now().toString(),
             name: name,
             votes: 0,
           ));
-      setState(() {});
+      setState(() {}); */
     }
     Navigator.pop(context);
+  }
+
+  Widget _showGraph() {
+    Map<String, double> dataMap = new Map();
+    cands.forEach((cand) {
+      dataMap.putIfAbsent(cand.name, () => cand.votes.toDouble());
+    });
+    return PieChart(
+      dataMap: dataMap,
+      chartType: ChartType.ring,
+    );
   }
 }
